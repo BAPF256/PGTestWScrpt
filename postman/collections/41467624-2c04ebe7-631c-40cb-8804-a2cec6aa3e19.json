@@ -1,0 +1,1920 @@
+{
+	"info": {
+		"_postman_id": "41467624-2c04ebe7-631c-40cb-8804-a2cec6aa3e19",
+		"name": "PayWeb3Scriptversion",
+		"description": "PayWeb is an easy and secure way to accept payments online. The Customer makes payments using PayGate’s secure hosted payment page. PayWeb is mobile-friendly making it compatible across all mobile devices. By selecting PayWeb, the Merchant gets immediate access to an array of Payment Methods, making it easier to get paid.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Initiate Without Notify",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"id": "5b8d08ce-c77a-4c91-a0ce-ad18364749fd",
+						"exec": [
+							"// PayWeb3 Initiate: MD5 Checksum Calculation (no separators, append 'secret')",
+							"// Handles both array and PropertyList for pm.request.body.urlencoded",
+							"(function () {",
+							"    function ensureCrypto(cb) {",
+							"        if (typeof CryptoJS !== 'undefined') return cb();",
+							"        pm.sendRequest('https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js', function (err, res) {",
+							"            if (!err && res && res.code === 200) {",
+							"                eval(res.text());",
+							"            }",
+							"            cb();",
+							"        });",
+							"    }",
+							"",
+							"    // Helper to get urlencoded params as array",
+							"    function getUrlencodedArray() {",
+							"        var u = pm.request.body && pm.request.body.urlencoded;",
+							"        if (!u) return [];",
+							"        if (Array.isArray(u)) return u;",
+							"        if (typeof u.toJSON === 'function') return u.toJSON();",
+							"        if (typeof u.all === 'function') return u.all();",
+							"        return [];",
+							"    }",
+							"",
+							"    // Helper to set urlencoded params from array (for PropertyList)",
+							"    function setUrlencodedArray(arr) {",
+							"        var u = pm.request.body && pm.request.body.urlencoded;",
+							"        if (!u) return;",
+							"        if (Array.isArray(u)) {",
+							"            // For array, just assign values",
+							"            pm.request.body.urlencoded = arr;",
+							"        } else if (typeof u.clear === 'function' && typeof u.add === 'function') {",
+							"            u.clear();",
+							"            arr.forEach(function (item) { u.add(item); });",
+							"        }",
+							"    }",
+							"",
+							"    function getField(key) {",
+							"        var arr = getUrlencodedArray();",
+							"        var found = arr.find(function (p) { return p.key === key; });",
+							"        return found ? String(found.value || '') : '';",
+							"    }",
+							"",
+							"    function setChecksum(value) {",
+							"        var arr = getUrlencodedArray();",
+							"        var idx = arr.findIndex(function (p) { return p.key === 'CHECKSUM'; });",
+							"        if (idx > -1) {",
+							"            arr[idx].value = value;",
+							"        } else {",
+							"            arr.push({ key: 'CHECKSUM', value: value });",
+							"        }",
+							"        setUrlencodedArray(arr);",
+							"    }",
+							"",
+							"    ensureCrypto(function () {",
+							"        var fields = [",
+							"            getField('PAYGATE_ID'),",
+							"            getField('REFERENCE'),",
+							"            getField('AMOUNT'),",
+							"            getField('CURRENCY'),",
+							"            getField('RETURN_URL'),",
+							"            getField('TRANSACTION_DATE'),",
+							"            getField('LOCALE'),",
+							"            getField('COUNTRY'),",
+							"            getField('EMAIL')",
+							"        ];",
+							"        var secret = 'secret';",
+							"        var stringToHash = fields.join('') + secret; // no separators",
+							"        var checksum = CryptoJS.MD5(stringToHash).toString(CryptoJS.enc.Hex);",
+							"        setChecksum(checksum);",
+							"    });",
+							"})();"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"id": "fc2e6743-1390-4513-820f-9ed537417e02",
+						"exec": [
+							"// Robust x-www-form-urlencoded parser",
+							"function parseUrlEncoded(body) {",
+							"    if (!body || typeof body !== 'string') return {};",
+							"    return body.split('&').reduce(function (acc, pair) {",
+							"        if (!pair) return acc;",
+							"        var parts = pair.split('=');",
+							"        if (!parts[0]) return acc;",
+							"        var key = decodeURIComponent(parts[0]);",
+							"        var value = decodeURIComponent(parts[1] || '');",
+							"        acc[key] = value;",
+							"        return acc;",
+							"    }, {});",
+							"}",
+							"",
+							"var response = parseUrlEncoded(pm.response.text());",
+							"",
+							"// Validate presence of required keys",
+							"var requiredKeys = [\"PAYGATE_ID\", \"PAY_REQUEST_ID\", \"REFERENCE\", \"CHECKSUM\"];",
+							"requiredKeys.forEach(function(key) {",
+							"    pm.test(\"Response contains key: \" + key, function () {",
+							"        pm.expect(response).to.have.property(key);",
+							"    });",
+							"});",
+							"",
+							"// Build minimal HTML form with auto-submit",
+							"var htmlForm =",
+							"    '<!DOCTYPE html>' +",
+							"    '<html lang=\"en\">' +",
+							"    '<head><meta charset=\"UTF-8\"><title>Paygate Redirect</title></head>' +",
+							"    '<body>' +",
+							"    '<form id=\"payhostFrm\" action=\"https://secure.paygate.co.za/payweb3/process.trans\" method=\"post\">' +",
+							"    '<input type=\"hidden\" name=\"PAYGATE_ID\" value=\"' + response.PAYGATE_ID + '\" />' +",
+							"    '<input type=\"hidden\" name=\"PAY_REQUEST_ID\" value=\"' + response.PAY_REQUEST_ID + '\" />' +",
+							"    '<input type=\"hidden\" name=\"REFERENCE\" value=\"' + response.REFERENCE + '\" />' +",
+							"    '<input type=\"hidden\" name=\"CHECKSUM\" value=\"' + response.CHECKSUM + '\" />' +",
+							"    '</form>' +",
+							"    '<script>document.getElementById(\"payhostFrm\").submit();</script>' +",
+							"    '</body></html>';",
+							"",
+							"// Set environment variable",
+							"pm.environment.set(\"paygate_html_form\", htmlForm);",
+							"",
+							"// Test: Environment variable is set and contains all hidden fields",
+							"pm.test(\"paygate_html_form env var is set and contains all hidden fields\", function () {",
+							"    var html = pm.environment.get(\"paygate_html_form\");",
+							"    pm.expect(html).to.be.a(\"string\");",
+							"    requiredKeys.forEach(function(key) {",
+							"        pm.expect(html).to.include('name=\"' + key + '\"');",
+							"    });",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"id": "41467624-583d29d2-0899-4e58-a255-b62aac60ba91",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "PAYGATE_ID",
+							"value": "10011072130",
+							"type": "text",
+							"description": "Your PayGateID – assigned by PayGate"
+						},
+						{
+							"key": "REFERENCE",
+							"value": "testreference",
+							"type": "text",
+							"description": "This is your reference number for use by your internal systems"
+						},
+						{
+							"key": "AMOUNT",
+							"value": "12000",
+							"type": "text",
+							"description": "Transaction amount in cents. e.g. 32.99 is specified as 3299"
+						},
+						{
+							"key": "CURRENCY",
+							"value": "ZAR",
+							"type": "text",
+							"description": "Currency code of the currency the customer is paying in."
+						},
+						{
+							"key": "RETURN_URL",
+							"value": "https://payfast.io/",
+							"type": "text",
+							"description": "Once the transaction is completed, PayWeb will return the customer to a page on your web site. The page the customer must see is specified in this field"
+						},
+						{
+							"key": "TRANSACTION_DATE",
+							"value": "2025-11-03 10:09:57",
+							"type": "text",
+							"description": "This is the date that the transaction was initiated on your website or system. The transactionCountry code of the country the customer is paying from date must be specified in 'Coordinated Universal Time' (UTC) e.g. 2016-05-30 09:30:10"
+						},
+						{
+							"key": "LOCALE",
+							"value": "en-za",
+							"type": "text",
+							"description": "The locale code identifies to PayGate the customer’s language, country and any special variant preferences (such as Date/Time format) which may be applied to the user interface. Not all the locales in the [locale table][#locales] are supported by PayGate. Please confirm with Support if the locale(s) you are using is supported. If the locale passed is not supported, then PayGate will default to the “en” locale."
+						},
+						{
+							"key": "COUNTRY",
+							"value": "ZAF",
+							"type": "text",
+							"description": "Country code of the country the customer is paying from"
+						},
+						{
+							"key": "EMAIL",
+							"value": "anything123@gmail.com",
+							"type": "text",
+							"description": "If the transaction is approved, PayWeb will email a payment confirmation to this email address – unless this is overridden at a gateway level by using the Payment Confirmation setting. This field remains compulsory but the sending of the confirmation email can be blocked"
+						},
+						{
+							"key": "CHECKSUM",
+							"value": "",
+							"type": "text",
+							"description": "This field contains a calculated MD5 hash based on the values of ALL the above-mentioned fields and a key. Refer to the section on Security below for more detail regarding the MD5 hash."
+						}
+					]
+				},
+				"url": {
+					"raw": "https://secure.paygate.co.za/payweb3/initiate.trans",
+					"protocol": "https",
+					"host": [
+						"secure",
+						"paygate",
+						"co",
+						"za"
+					],
+					"path": [
+						"payweb3",
+						"initiate.trans"
+					]
+				},
+				"description": "Performs a PayWeb3 initiate by doing a standard HTTP POST with form data."
+			},
+			"response": [
+				{
+					"id": "41467624-a3d1ff1f-cec3-4df7-83aa-aa00b539a22d",
+					"name": "PayWeb3 Initiate",
+					"originalRequest": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "PAYGATE_ID",
+									"value": "10011072130",
+									"description": "Your PayGateID – assigned by PayGate",
+									"type": "text"
+								},
+								{
+									"key": "REFERENCE",
+									"value": "pgtest_123456789",
+									"description": "This is your reference number for use by your internal systems",
+									"type": "text"
+								},
+								{
+									"key": "AMOUNT",
+									"value": "3299",
+									"description": "Transaction amount in cents. e.g. 32.99 is specified as 3299",
+									"type": "text"
+								},
+								{
+									"key": "CURRENCY",
+									"value": "ZAR",
+									"description": "Currency code of the currency the customer is paying in.",
+									"type": "text"
+								},
+								{
+									"key": "RETURN_URL",
+									"value": "https://my.return.url/page",
+									"description": "Once the transaction is completed, PayWeb will return the customer to a page on your web site. The page the customer must see is specified in this field",
+									"type": "text"
+								},
+								{
+									"key": "TRANSACTION_DATE",
+									"value": "2018-01-01 12:00:00",
+									"description": "This is the date that the transaction was initiated on your website or system. The transaction date must be specified in 'Coordinated Universal Time' (UTC) e.g. 2016-05-30 09:30:10",
+									"type": "text"
+								},
+								{
+									"key": "LOCALE",
+									"value": "en-za",
+									"description": "The locale code identifies to PayGate the customer’s language, country and any special variant preferences (such as Date/Time format) which may be applied to the user interface. Not all the locales in the [locale table][#locales] are supported by PayGate. Please confirm with Support if the locale(s) you are using is supported. If the locale passed is not supported, then PayGate will default to the “en” locale.",
+									"type": "text"
+								},
+								{
+									"key": "COUNTRY",
+									"value": "ZAF",
+									"description": "Country code of the country the customer is paying from",
+									"type": "text"
+								},
+								{
+									"key": "EMAIL",
+									"value": "customer@paygate.co.za",
+									"description": "If the transaction is approved, PayWeb will email a payment confirmation to this email address – unless this is overridden at a gateway level by using the Payment Confirmation setting. This field remains compulsory but the sending of the confirmation email can be blocked",
+									"type": "text"
+								},
+								{
+									"key": "CHECKSUM",
+									"value": "59229d9c6cb336ae4bd287c87e6f0220",
+									"description": "This field contains a calculated MD5 hash based on the values of ALL the above-mentioned fields and a key. Refer to the section on Security below for more detail regarding the MD5 hash.",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "https://secure.paygate.co.za/payweb3/initiate.trans",
+							"protocol": "https",
+							"host": [
+								"secure",
+								"paygate",
+								"co",
+								"za"
+							],
+							"path": [
+								"payweb3",
+								"initiate.trans"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "html",
+					"header": [
+						{
+							"key": "Cache-Control",
+							"value": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+							"name": "Cache-Control",
+							"description": "Tells all caching mechanisms from server to client whether they may cache this object. It is measured in seconds"
+						},
+						{
+							"key": "Connection",
+							"value": "keep-alive",
+							"name": "Connection",
+							"description": "Options that are desired for the connection"
+						},
+						{
+							"key": "Content-Length",
+							"value": "143",
+							"name": "Content-Length",
+							"description": "The length of the response body in octets (8-bit bytes)"
+						},
+						{
+							"key": "Content-Type",
+							"value": "text/html; charset=UTF-8",
+							"name": "Content-Type",
+							"description": "The mime type of this content"
+						},
+						{
+							"key": "Date",
+							"value": "Thu, 17 May 2018 07:05:45 GMT",
+							"name": "Date",
+							"description": "The date and time that the message was sent"
+						},
+						{
+							"key": "Expires",
+							"value": "Thu, 19 Nov 1981 08:52:00 GMT",
+							"name": "Expires",
+							"description": "Gives the date/time after which the response is considered stale"
+						},
+						{
+							"key": "Pragma",
+							"value": "no-cache",
+							"name": "Pragma",
+							"description": "Implementation-specific headers that may have various effects anywhere along the request-response chain."
+						},
+						{
+							"key": "Server",
+							"value": "Apache",
+							"name": "Server",
+							"description": "A name for the server"
+						},
+						{
+							"key": "Via",
+							"value": "1.1 8ffe7ba0631040e73d58310352f9a079.cloudfront.net (CloudFront)",
+							"name": "Via",
+							"description": "Informs the client of proxies through which the response was sent."
+						},
+						{
+							"key": "X-Amz-Cf-Id",
+							"value": "QKE7ZGJQc75z2ivIl8KXwGgziwJYzC8B-pACM42vQFson__zMPojmw==",
+							"name": "X-Amz-Cf-Id",
+							"description": "Custom header"
+						},
+						{
+							"key": "X-Cache",
+							"value": "Miss from cloudfront",
+							"name": "X-Cache",
+							"description": "Custom header"
+						}
+					],
+					"cookie": [
+						{
+							"expires": "Invalid Date",
+							"httpOnly": true,
+							"domain": "secure.paygate.co.za",
+							"path": "/",
+							"secure": true,
+							"value": "4ilii8i22im9n0fc6elhs7n9e6",
+							"key": "paygate_payweb3"
+						}
+					],
+					"responseTime": null,
+					"body": "PAYGATE_ID=10011072130&PAY_REQUEST_ID=D6379BB0-CB41-6535-B274-9CBD7F8DFA20&REFERENCE=pgtest_123456789&CHECKSUM=8f9587802e010f270956d18d0864eb10"
+				}
+			]
+		},
+		{
+			"name": "Initiate With Notify URL only",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"id": "5b8d08ce-c77a-4c91-a0ce-ad18364749fd",
+						"exec": [
+							"// PayWeb3 Initiate: MD5 Checksum Calculation (no separators, append 'secret')",
+							"// Handles both array and PropertyList for pm.request.body.urlencoded",
+							"(function () {",
+							"    function ensureCrypto(cb) {",
+							"        if (typeof CryptoJS !== 'undefined') return cb();",
+							"        pm.sendRequest('https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js', function (err, res) {",
+							"            if (!err && res && res.code === 200) {",
+							"                eval(res.text());",
+							"            }",
+							"            cb();",
+							"        });",
+							"    }",
+							"",
+							"    // Helper to get urlencoded params as array",
+							"    function getUrlencodedArray() {",
+							"        var u = pm.request.body && pm.request.body.urlencoded;",
+							"        if (!u) return [];",
+							"        if (Array.isArray(u)) return u;",
+							"        if (typeof u.toJSON === 'function') return u.toJSON();",
+							"        if (typeof u.all === 'function') return u.all();",
+							"        return [];",
+							"    }",
+							"",
+							"    // Helper to set urlencoded params from array (for PropertyList)",
+							"    function setUrlencodedArray(arr) {",
+							"        var u = pm.request.body && pm.request.body.urlencoded;",
+							"        if (!u) return;",
+							"        if (Array.isArray(u)) {",
+							"            // For array, just assign values",
+							"            pm.request.body.urlencoded = arr;",
+							"        } else if (typeof u.clear === 'function' && typeof u.add === 'function') {",
+							"            u.clear();",
+							"            arr.forEach(function (item) { u.add(item); });",
+							"        }",
+							"    }",
+							"",
+							"    function getField(key) {",
+							"        var arr = getUrlencodedArray();",
+							"        var found = arr.find(function (p) { return p.key === key; });",
+							"        return found ? String(found.value || '') : '';",
+							"    }",
+							"",
+							"    function setChecksum(value) {",
+							"        var arr = getUrlencodedArray();",
+							"        var idx = arr.findIndex(function (p) { return p.key === 'CHECKSUM'; });",
+							"        if (idx > -1) {",
+							"            arr[idx].value = value;",
+							"        } else {",
+							"            arr.push({ key: 'CHECKSUM', value: value });",
+							"        }",
+							"        setUrlencodedArray(arr);",
+							"    }",
+							"",
+							"    ensureCrypto(function () {",
+							"        var fields = [",
+							"            getField('PAYGATE_ID'),",
+							"            getField('REFERENCE'),",
+							"            getField('AMOUNT'),",
+							"            getField('CURRENCY'),",
+							"            getField('RETURN_URL'),",
+							"            getField('TRANSACTION_DATE'),",
+							"            getField('LOCALE'),",
+							"            getField('COUNTRY'),",
+							"            getField('EMAIL'),",
+							"            getField('NOTIFY_URL')",
+							"        ];",
+							"        var secret = 'secret'; // Replace with your actual secret if needed",
+							"        var concatString = fields.join('') + secret;",
+							"        // Log the string used for checksum calculation",
+							"        console.log('[PayWeb3 Checksum] String used for MD5:', concatString);",
+							"        var checksum = CryptoJS.MD5(concatString).toString(CryptoJS.enc.Hex);",
+							"        setChecksum(checksum);",
+							"    });",
+							"})();",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"id": "fc2e6743-1390-4513-820f-9ed537417e02",
+						"exec": [
+							"// Robust x-www-form-urlencoded parser",
+							"function parseUrlEncoded(body) {",
+							"    if (!body || typeof body !== 'string') return {};",
+							"    return body.split('&').reduce(function (acc, pair) {",
+							"        if (!pair) return acc;",
+							"        var parts = pair.split('=');",
+							"        if (!parts[0]) return acc;",
+							"        var key = decodeURIComponent(parts[0]);",
+							"        var value = decodeURIComponent(parts[1] || '');",
+							"        acc[key] = value;",
+							"        return acc;",
+							"    }, {});",
+							"}",
+							"",
+							"var response = parseUrlEncoded(pm.response.text());",
+							"",
+							"// Validate presence of required keys",
+							"var requiredKeys = [\"PAYGATE_ID\", \"PAY_REQUEST_ID\", \"REFERENCE\", \"CHECKSUM\"];",
+							"requiredKeys.forEach(function(key) {",
+							"    pm.test(\"Response contains key: \" + key, function () {",
+							"        pm.expect(response).to.have.property(key);",
+							"    });",
+							"});",
+							"",
+							"// Build minimal HTML form with auto-submit",
+							"var htmlForm =",
+							"    '<!DOCTYPE html>' +",
+							"    '<html lang=\"en\">' +",
+							"    '<head><meta charset=\"UTF-8\"><title>Paygate Redirect</title></head>' +",
+							"    '<body>' +",
+							"    '<form id=\"payhostFrm\" action=\"https://secure.paygate.co.za/payweb3/process.trans\" method=\"post\">' +",
+							"    '<input type=\"hidden\" name=\"PAYGATE_ID\" value=\"' + response.PAYGATE_ID + '\" />' +",
+							"    '<input type=\"hidden\" name=\"PAY_REQUEST_ID\" value=\"' + response.PAY_REQUEST_ID + '\" />' +",
+							"    '<input type=\"hidden\" name=\"REFERENCE\" value=\"' + response.REFERENCE + '\" />' +",
+							"    '<input type=\"hidden\" name=\"CHECKSUM\" value=\"' + response.CHECKSUM + '\" />' +",
+							"    '</form>' +",
+							"    '<script>document.getElementById(\"payhostFrm\").submit();</script>' +",
+							"    '</body></html>';",
+							"",
+							"// Set environment variable",
+							"pm.environment.set(\"paygate_html_form\", htmlForm);",
+							"",
+							"// Test: Environment variable is set and contains all hidden fields",
+							"pm.test(\"paygate_html_form env var is set and contains all hidden fields\", function () {",
+							"    var html = pm.environment.get(\"paygate_html_form\");",
+							"    pm.expect(html).to.be.a(\"string\");",
+							"    requiredKeys.forEach(function(key) {",
+							"        pm.expect(html).to.include('name=\"' + key + '\"');",
+							"    });",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"id": "41467624-f715680a-cd5c-48ee-9cf4-5fd66a2b607f",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "PAYGATE_ID",
+							"value": "10011072130",
+							"type": "text",
+							"description": "Your PayGateID – assigned by PayGate"
+						},
+						{
+							"key": "REFERENCE",
+							"value": "testreference",
+							"type": "text",
+							"description": "This is your reference number for use by your internal systems"
+						},
+						{
+							"key": "AMOUNT",
+							"value": "100",
+							"type": "text",
+							"description": "Transaction amount in cents. e.g. 32.99 is specified as 3299"
+						},
+						{
+							"key": "CURRENCY",
+							"value": "ZAR",
+							"type": "text",
+							"description": "Currency code of the currency the customer is paying in."
+						},
+						{
+							"key": "RETURN_URL",
+							"value": "https://payfast.io/",
+							"type": "text",
+							"description": "Once the transaction is completed, PayWeb will return the customer to a page on your web site. The page the customer must see is specified in this field"
+						},
+						{
+							"key": "TRANSACTION_DATE",
+							"value": "2025-11-03 10:09:57",
+							"type": "text",
+							"description": "This is the date that the transaction was initiated on your website or system. The transactionCountry code of the country the customer is paying from date must be specified in 'Coordinated Universal Time' (UTC) e.g. 2016-05-30 09:30:10"
+						},
+						{
+							"key": "LOCALE",
+							"value": "en-za",
+							"type": "text",
+							"description": "The locale code identifies to PayGate the customer’s language, country and any special variant preferences (such as Date/Time format) which may be applied to the user interface. Not all the locales in the [locale table][#locales] are supported by PayGate. Please confirm with Support if the locale(s) you are using is supported. If the locale passed is not supported, then PayGate will default to the “en” locale."
+						},
+						{
+							"key": "COUNTRY",
+							"value": "ZAF",
+							"type": "text",
+							"description": "Country code of the country the customer is paying from"
+						},
+						{
+							"key": "EMAIL",
+							"value": "anything123@gmail.com",
+							"type": "text",
+							"description": "If the transaction is approved, PayWeb will email a payment confirmation to this email address – unless this is overridden at a gateway level by using the Payment Confirmation setting. This field remains compulsory but the sending of the confirmation email can be blocked"
+						},
+						{
+							"key": "NOTIFY_URL",
+							"value": "https://webhook.site/f490374e-9638-4d22-b8c7-7c5bf9539bba",
+							"type": "text",
+							"uuid": "2a6d9e47-afed-4f59-912f-89f014f37135"
+						},
+						{
+							"key": "CHECKSUM",
+							"value": "",
+							"type": "text",
+							"description": "This field contains a calculated MD5 hash based on the values of ALL the above-mentioned fields and a key. Refer to the section on Security below for more detail regarding the MD5 hash."
+						}
+					]
+				},
+				"url": {
+					"raw": "https://secure.paygate.co.za/payweb3/initiate.trans",
+					"protocol": "https",
+					"host": [
+						"secure",
+						"paygate",
+						"co",
+						"za"
+					],
+					"path": [
+						"payweb3",
+						"initiate.trans"
+					]
+				},
+				"description": "Performs a PayWeb3 initiate by doing a standard HTTP POST with form data."
+			},
+			"response": [
+				{
+					"id": "41467624-53fe084c-4a69-4dc1-abd5-c6fcab5e954a",
+					"name": "PayWeb3 Initiate",
+					"originalRequest": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "PAYGATE_ID",
+									"value": "10011072130",
+									"description": "Your PayGateID – assigned by PayGate",
+									"type": "text"
+								},
+								{
+									"key": "REFERENCE",
+									"value": "pgtest_123456789",
+									"description": "This is your reference number for use by your internal systems",
+									"type": "text"
+								},
+								{
+									"key": "AMOUNT",
+									"value": "3299",
+									"description": "Transaction amount in cents. e.g. 32.99 is specified as 3299",
+									"type": "text"
+								},
+								{
+									"key": "CURRENCY",
+									"value": "ZAR",
+									"description": "Currency code of the currency the customer is paying in.",
+									"type": "text"
+								},
+								{
+									"key": "RETURN_URL",
+									"value": "https://my.return.url/page",
+									"description": "Once the transaction is completed, PayWeb will return the customer to a page on your web site. The page the customer must see is specified in this field",
+									"type": "text"
+								},
+								{
+									"key": "TRANSACTION_DATE",
+									"value": "2018-01-01 12:00:00",
+									"description": "This is the date that the transaction was initiated on your website or system. The transaction date must be specified in 'Coordinated Universal Time' (UTC) e.g. 2016-05-30 09:30:10",
+									"type": "text"
+								},
+								{
+									"key": "LOCALE",
+									"value": "en-za",
+									"description": "The locale code identifies to PayGate the customer’s language, country and any special variant preferences (such as Date/Time format) which may be applied to the user interface. Not all the locales in the [locale table][#locales] are supported by PayGate. Please confirm with Support if the locale(s) you are using is supported. If the locale passed is not supported, then PayGate will default to the “en” locale.",
+									"type": "text"
+								},
+								{
+									"key": "COUNTRY",
+									"value": "ZAF",
+									"description": "Country code of the country the customer is paying from",
+									"type": "text"
+								},
+								{
+									"key": "EMAIL",
+									"value": "customer@paygate.co.za",
+									"description": "If the transaction is approved, PayWeb will email a payment confirmation to this email address – unless this is overridden at a gateway level by using the Payment Confirmation setting. This field remains compulsory but the sending of the confirmation email can be blocked",
+									"type": "text"
+								},
+								{
+									"key": "CHECKSUM",
+									"value": "59229d9c6cb336ae4bd287c87e6f0220",
+									"description": "This field contains a calculated MD5 hash based on the values of ALL the above-mentioned fields and a key. Refer to the section on Security below for more detail regarding the MD5 hash.",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "https://secure.paygate.co.za/payweb3/initiate.trans",
+							"protocol": "https",
+							"host": [
+								"secure",
+								"paygate",
+								"co",
+								"za"
+							],
+							"path": [
+								"payweb3",
+								"initiate.trans"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "html",
+					"header": [
+						{
+							"key": "Cache-Control",
+							"value": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+							"name": "Cache-Control",
+							"description": "Tells all caching mechanisms from server to client whether they may cache this object. It is measured in seconds"
+						},
+						{
+							"key": "Connection",
+							"value": "keep-alive",
+							"name": "Connection",
+							"description": "Options that are desired for the connection"
+						},
+						{
+							"key": "Content-Length",
+							"value": "143",
+							"name": "Content-Length",
+							"description": "The length of the response body in octets (8-bit bytes)"
+						},
+						{
+							"key": "Content-Type",
+							"value": "text/html; charset=UTF-8",
+							"name": "Content-Type",
+							"description": "The mime type of this content"
+						},
+						{
+							"key": "Date",
+							"value": "Thu, 17 May 2018 07:05:45 GMT",
+							"name": "Date",
+							"description": "The date and time that the message was sent"
+						},
+						{
+							"key": "Expires",
+							"value": "Thu, 19 Nov 1981 08:52:00 GMT",
+							"name": "Expires",
+							"description": "Gives the date/time after which the response is considered stale"
+						},
+						{
+							"key": "Pragma",
+							"value": "no-cache",
+							"name": "Pragma",
+							"description": "Implementation-specific headers that may have various effects anywhere along the request-response chain."
+						},
+						{
+							"key": "Server",
+							"value": "Apache",
+							"name": "Server",
+							"description": "A name for the server"
+						},
+						{
+							"key": "Via",
+							"value": "1.1 8ffe7ba0631040e73d58310352f9a079.cloudfront.net (CloudFront)",
+							"name": "Via",
+							"description": "Informs the client of proxies through which the response was sent."
+						},
+						{
+							"key": "X-Amz-Cf-Id",
+							"value": "QKE7ZGJQc75z2ivIl8KXwGgziwJYzC8B-pACM42vQFson__zMPojmw==",
+							"name": "X-Amz-Cf-Id",
+							"description": "Custom header"
+						},
+						{
+							"key": "X-Cache",
+							"value": "Miss from cloudfront",
+							"name": "X-Cache",
+							"description": "Custom header"
+						}
+					],
+					"cookie": [
+						{
+							"expires": "Invalid Date",
+							"httpOnly": true,
+							"domain": "secure.paygate.co.za",
+							"path": "/",
+							"secure": true,
+							"value": "4ilii8i22im9n0fc6elhs7n9e6",
+							"key": "paygate_payweb3"
+						}
+					],
+					"responseTime": null,
+					"body": "PAYGATE_ID=10011072130&PAY_REQUEST_ID=D6379BB0-CB41-6535-B274-9CBD7F8DFA20&REFERENCE=pgtest_123456789&CHECKSUM=8f9587802e010f270956d18d0864eb10"
+				}
+			]
+		},
+		{
+			"name": "Initiate With Notify URL and Vault enabled",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"id": "5b8d08ce-c77a-4c91-a0ce-ad18364749fd",
+						"exec": [
+							"// PayWeb3 Initiate: MD5 Checksum Calculation (no separators, append 'secret')",
+							"// Handles both array and PropertyList for pm.request.body.urlencoded",
+							"(function () {",
+							"    function ensureCrypto(cb) {",
+							"        if (typeof CryptoJS !== 'undefined') return cb();",
+							"        pm.sendRequest('https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js', function (err, res) {",
+							"            if (!err && res && res.code === 200) {",
+							"                eval(res.text());",
+							"            }",
+							"            cb();",
+							"        });",
+							"    }",
+							"",
+							"    // Helper to get urlencoded params as array",
+							"    function getUrlencodedArray() {",
+							"        var u = pm.request.body && pm.request.body.urlencoded;",
+							"        if (!u) return [];",
+							"        if (Array.isArray(u)) return u;",
+							"        if (typeof u.toJSON === 'function') return u.toJSON();",
+							"        if (typeof u.all === 'function') return u.all();",
+							"        return [];",
+							"    }",
+							"",
+							"    // Helper to set urlencoded params from array (for PropertyList)",
+							"    function setUrlencodedArray(arr) {",
+							"        var u = pm.request.body && pm.request.body.urlencoded;",
+							"        if (!u) return;",
+							"        if (Array.isArray(u)) {",
+							"            // For array, just assign values",
+							"            pm.request.body.urlencoded = arr;",
+							"        } else if (typeof u.clear === 'function' && typeof u.add === 'function') {",
+							"            u.clear();",
+							"            arr.forEach(function (item) { u.add(item); });",
+							"        }",
+							"    }",
+							"",
+							"    function getField(key) {",
+							"        var arr = getUrlencodedArray();",
+							"        var found = arr.find(function (p) { return p.key === key; });",
+							"        return found ? String(found.value || '') : '';",
+							"    }",
+							"",
+							"    function setChecksum(value) {",
+							"        var arr = getUrlencodedArray();",
+							"        var idx = arr.findIndex(function (p) { return p.key === 'CHECKSUM'; });",
+							"        if (idx > -1) {",
+							"            arr[idx].value = value;",
+							"        } else {",
+							"            arr.push({ key: 'CHECKSUM', value: value });",
+							"        }",
+							"        setUrlencodedArray(arr);",
+							"    }",
+							"",
+							"    ensureCrypto(function () {",
+							"        var fields = [",
+							"            getField('PAYGATE_ID'),",
+							"            getField('REFERENCE'),",
+							"            getField('AMOUNT'),",
+							"            getField('CURRENCY'),",
+							"            getField('RETURN_URL'),",
+							"            getField('TRANSACTION_DATE'),",
+							"            getField('LOCALE'),",
+							"            getField('COUNTRY'),",
+							"            getField('EMAIL'),",
+							"            getField('NOTIFY_URL'),",
+							"            getField('VAULT')",
+							"        ];",
+							"        var secret = 'secret'; // Replace with your actual secret if needed",
+							"        var concatString = fields.join('') + secret;",
+							"        // Log the string used for checksum calculation",
+							"        console.log('[PayWeb3 Checksum] String used for MD5:', concatString);",
+							"        var checksum = CryptoJS.MD5(concatString).toString(CryptoJS.enc.Hex);",
+							"        setChecksum(checksum);",
+							"    });",
+							"})();",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"id": "fc2e6743-1390-4513-820f-9ed537417e02",
+						"exec": [
+							"// Robust x-www-form-urlencoded parser",
+							"function parseUrlEncoded(body) {",
+							"    if (!body || typeof body !== 'string') return {};",
+							"    return body.split('&').reduce(function (acc, pair) {",
+							"        if (!pair) return acc;",
+							"        var parts = pair.split('=');",
+							"        if (!parts[0]) return acc;",
+							"        var key = decodeURIComponent(parts[0]);",
+							"        var value = decodeURIComponent(parts[1] || '');",
+							"        acc[key] = value;",
+							"        return acc;",
+							"    }, {});",
+							"}",
+							"",
+							"var response = parseUrlEncoded(pm.response.text());",
+							"",
+							"// Validate presence of required keys",
+							"var requiredKeys = [\"PAYGATE_ID\", \"PAY_REQUEST_ID\", \"REFERENCE\", \"CHECKSUM\"];",
+							"requiredKeys.forEach(function(key) {",
+							"    pm.test(\"Response contains key: \" + key, function () {",
+							"        pm.expect(response).to.have.property(key);",
+							"    });",
+							"});",
+							"",
+							"// Build minimal HTML form with auto-submit",
+							"var htmlForm =",
+							"    '<!DOCTYPE html>' +",
+							"    '<html lang=\"en\">' +",
+							"    '<head><meta charset=\"UTF-8\"><title>Paygate Redirect</title></head>' +",
+							"    '<body>' +",
+							"    '<form id=\"payhostFrm\" action=\"https://secure.paygate.co.za/payweb3/process.trans\" method=\"post\">' +",
+							"    '<input type=\"hidden\" name=\"PAYGATE_ID\" value=\"' + response.PAYGATE_ID + '\" />' +",
+							"    '<input type=\"hidden\" name=\"PAY_REQUEST_ID\" value=\"' + response.PAY_REQUEST_ID + '\" />' +",
+							"    '<input type=\"hidden\" name=\"REFERENCE\" value=\"' + response.REFERENCE + '\" />' +",
+							"    '<input type=\"hidden\" name=\"CHECKSUM\" value=\"' + response.CHECKSUM + '\" />' +",
+							"    '</form>' +",
+							"    '<script>document.getElementById(\"payhostFrm\").submit();</script>' +",
+							"    '</body></html>';",
+							"",
+							"// Set environment variable",
+							"pm.environment.set(\"paygate_html_form\", htmlForm);",
+							"",
+							"// Test: Environment variable is set and contains all hidden fields",
+							"pm.test(\"paygate_html_form env var is set and contains all hidden fields\", function () {",
+							"    var html = pm.environment.get(\"paygate_html_form\");",
+							"    pm.expect(html).to.be.a(\"string\");",
+							"    requiredKeys.forEach(function(key) {",
+							"        pm.expect(html).to.include('name=\"' + key + '\"');",
+							"    });",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"id": "41467624-b357cff4-3603-4bfe-9c38-915278b32157",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "PAYGATE_ID",
+							"value": "10011072130",
+							"type": "text",
+							"description": "Your PayGateID – assigned by PayGate"
+						},
+						{
+							"key": "REFERENCE",
+							"value": "testreference",
+							"type": "text",
+							"description": "This is your reference number for use by your internal systems"
+						},
+						{
+							"key": "AMOUNT",
+							"value": "1000",
+							"type": "text",
+							"description": "Transaction amount in cents. e.g. 32.99 is specified as 3299"
+						},
+						{
+							"key": "CURRENCY",
+							"value": "ZAR",
+							"type": "text",
+							"description": "Currency code of the currency the customer is paying in."
+						},
+						{
+							"key": "RETURN_URL",
+							"value": "https://payfast.io/",
+							"type": "text",
+							"description": "Once the transaction is completed, PayWeb will return the customer to a page on your web site. The page the customer must see is specified in this field"
+						},
+						{
+							"key": "TRANSACTION_DATE",
+							"value": "2025-11-03 10:09:57",
+							"type": "text",
+							"description": "This is the date that the transaction was initiated on your website or system. The transactionCountry code of the country the customer is paying from date must be specified in 'Coordinated Universal Time' (UTC) e.g. 2016-05-30 09:30:10"
+						},
+						{
+							"key": "LOCALE",
+							"value": "en-za",
+							"type": "text",
+							"description": "The locale code identifies to PayGate the customer’s language, country and any special variant preferences (such as Date/Time format) which may be applied to the user interface. Not all the locales in the [locale table][#locales] are supported by PayGate. Please confirm with Support if the locale(s) you are using is supported. If the locale passed is not supported, then PayGate will default to the “en” locale."
+						},
+						{
+							"key": "COUNTRY",
+							"value": "ZAF",
+							"type": "text",
+							"description": "Country code of the country the customer is paying from"
+						},
+						{
+							"key": "EMAIL",
+							"value": "anything123@gmail.com",
+							"type": "text",
+							"description": "If the transaction is approved, PayWeb will email a payment confirmation to this email address – unless this is overridden at a gateway level by using the Payment Confirmation setting. This field remains compulsory but the sending of the confirmation email can be blocked"
+						},
+						{
+							"key": "NOTIFY_URL",
+							"value": "https://webhook.site/0e15353f-4a27-4a40-9319-142f845ed74f",
+							"type": "text",
+							"uuid": "2a6d9e47-afed-4f59-912f-89f014f37135"
+						},
+						{
+							"key": "VAULT",
+							"value": "1",
+							"type": "text",
+							"uuid": "f0723e51-c567-4b10-b0e6-b59dd44878ba"
+						},
+						{
+							"key": "CHECKSUM",
+							"value": "",
+							"type": "text",
+							"description": "This field contains a calculated MD5 hash based on the values of ALL the above-mentioned fields and a key. Refer to the section on Security below for more detail regarding the MD5 hash."
+						}
+					]
+				},
+				"url": {
+					"raw": "https://secure.paygate.co.za/payweb3/initiate.trans",
+					"protocol": "https",
+					"host": [
+						"secure",
+						"paygate",
+						"co",
+						"za"
+					],
+					"path": [
+						"payweb3",
+						"initiate.trans"
+					]
+				},
+				"description": "Performs a PayWeb3 initiate by doing a standard HTTP POST with form data."
+			},
+			"response": [
+				{
+					"id": "41467624-84cdeec3-4cf4-4ac9-8651-0d81c03536a4",
+					"name": "PayWeb3 Initiate",
+					"originalRequest": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "PAYGATE_ID",
+									"value": "10011072130",
+									"description": "Your PayGateID – assigned by PayGate",
+									"type": "text"
+								},
+								{
+									"key": "REFERENCE",
+									"value": "pgtest_123456789",
+									"description": "This is your reference number for use by your internal systems",
+									"type": "text"
+								},
+								{
+									"key": "AMOUNT",
+									"value": "3299",
+									"description": "Transaction amount in cents. e.g. 32.99 is specified as 3299",
+									"type": "text"
+								},
+								{
+									"key": "CURRENCY",
+									"value": "ZAR",
+									"description": "Currency code of the currency the customer is paying in.",
+									"type": "text"
+								},
+								{
+									"key": "RETURN_URL",
+									"value": "https://my.return.url/page",
+									"description": "Once the transaction is completed, PayWeb will return the customer to a page on your web site. The page the customer must see is specified in this field",
+									"type": "text"
+								},
+								{
+									"key": "TRANSACTION_DATE",
+									"value": "2018-01-01 12:00:00",
+									"description": "This is the date that the transaction was initiated on your website or system. The transaction date must be specified in 'Coordinated Universal Time' (UTC) e.g. 2016-05-30 09:30:10",
+									"type": "text"
+								},
+								{
+									"key": "LOCALE",
+									"value": "en-za",
+									"description": "The locale code identifies to PayGate the customer’s language, country and any special variant preferences (such as Date/Time format) which may be applied to the user interface. Not all the locales in the [locale table][#locales] are supported by PayGate. Please confirm with Support if the locale(s) you are using is supported. If the locale passed is not supported, then PayGate will default to the “en” locale.",
+									"type": "text"
+								},
+								{
+									"key": "COUNTRY",
+									"value": "ZAF",
+									"description": "Country code of the country the customer is paying from",
+									"type": "text"
+								},
+								{
+									"key": "EMAIL",
+									"value": "customer@paygate.co.za",
+									"description": "If the transaction is approved, PayWeb will email a payment confirmation to this email address – unless this is overridden at a gateway level by using the Payment Confirmation setting. This field remains compulsory but the sending of the confirmation email can be blocked",
+									"type": "text"
+								},
+								{
+									"key": "CHECKSUM",
+									"value": "59229d9c6cb336ae4bd287c87e6f0220",
+									"description": "This field contains a calculated MD5 hash based on the values of ALL the above-mentioned fields and a key. Refer to the section on Security below for more detail regarding the MD5 hash.",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "https://secure.paygate.co.za/payweb3/initiate.trans",
+							"protocol": "https",
+							"host": [
+								"secure",
+								"paygate",
+								"co",
+								"za"
+							],
+							"path": [
+								"payweb3",
+								"initiate.trans"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "html",
+					"header": [
+						{
+							"key": "Cache-Control",
+							"value": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+							"name": "Cache-Control",
+							"description": "Tells all caching mechanisms from server to client whether they may cache this object. It is measured in seconds"
+						},
+						{
+							"key": "Connection",
+							"value": "keep-alive",
+							"name": "Connection",
+							"description": "Options that are desired for the connection"
+						},
+						{
+							"key": "Content-Length",
+							"value": "143",
+							"name": "Content-Length",
+							"description": "The length of the response body in octets (8-bit bytes)"
+						},
+						{
+							"key": "Content-Type",
+							"value": "text/html; charset=UTF-8",
+							"name": "Content-Type",
+							"description": "The mime type of this content"
+						},
+						{
+							"key": "Date",
+							"value": "Thu, 17 May 2018 07:05:45 GMT",
+							"name": "Date",
+							"description": "The date and time that the message was sent"
+						},
+						{
+							"key": "Expires",
+							"value": "Thu, 19 Nov 1981 08:52:00 GMT",
+							"name": "Expires",
+							"description": "Gives the date/time after which the response is considered stale"
+						},
+						{
+							"key": "Pragma",
+							"value": "no-cache",
+							"name": "Pragma",
+							"description": "Implementation-specific headers that may have various effects anywhere along the request-response chain."
+						},
+						{
+							"key": "Server",
+							"value": "Apache",
+							"name": "Server",
+							"description": "A name for the server"
+						},
+						{
+							"key": "Via",
+							"value": "1.1 8ffe7ba0631040e73d58310352f9a079.cloudfront.net (CloudFront)",
+							"name": "Via",
+							"description": "Informs the client of proxies through which the response was sent."
+						},
+						{
+							"key": "X-Amz-Cf-Id",
+							"value": "QKE7ZGJQc75z2ivIl8KXwGgziwJYzC8B-pACM42vQFson__zMPojmw==",
+							"name": "X-Amz-Cf-Id",
+							"description": "Custom header"
+						},
+						{
+							"key": "X-Cache",
+							"value": "Miss from cloudfront",
+							"name": "X-Cache",
+							"description": "Custom header"
+						}
+					],
+					"cookie": [
+						{
+							"expires": "Invalid Date",
+							"httpOnly": true,
+							"domain": "secure.paygate.co.za",
+							"path": "/",
+							"secure": true,
+							"value": "4ilii8i22im9n0fc6elhs7n9e6",
+							"key": "paygate_payweb3"
+						}
+					],
+					"responseTime": null,
+					"body": "PAYGATE_ID=10011072130&PAY_REQUEST_ID=D6379BB0-CB41-6535-B274-9CBD7F8DFA20&REFERENCE=pgtest_123456789&CHECKSUM=8f9587802e010f270956d18d0864eb10"
+				}
+			]
+		},
+		{
+			"name": "Initiate With Notify URL and Pay Method",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"id": "4c4ad061-6846-48d5-afd5-ee7a71c83974",
+						"exec": [
+							"// PayWeb3 Initiate: MD5 Checksum Calculation (no separators, append 'secret')",
+							"// Handles both array and PropertyList for pm.request.body.urlencoded",
+							"(function () {",
+							"    function ensureCrypto(cb) {",
+							"        if (typeof CryptoJS !== 'undefined') return cb();",
+							"        pm.sendRequest('https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js', function (err, res) {",
+							"            if (!err && res && res.code === 200) {",
+							"                eval(res.text());",
+							"            }",
+							"            cb();",
+							"        });",
+							"    }",
+							"",
+							"    // Helper to get urlencoded params as array",
+							"    function getUrlencodedArray() {",
+							"        var u = pm.request.body && pm.request.body.urlencoded;",
+							"        if (!u) return [];",
+							"        if (Array.isArray(u)) return u;",
+							"        if (typeof u.toJSON === 'function') return u.toJSON();",
+							"        if (typeof u.all === 'function') return u.all();",
+							"        return [];",
+							"    }",
+							"",
+							"    // Helper to set urlencoded params from array (for PropertyList)",
+							"    function setUrlencodedArray(arr) {",
+							"        var u = pm.request.body && pm.request.body.urlencoded;",
+							"        if (!u) return;",
+							"        if (Array.isArray(u)) {",
+							"            // For array, just assign values",
+							"            pm.request.body.urlencoded = arr;",
+							"        } else if (typeof u.clear === 'function' && typeof u.add === 'function') {",
+							"            u.clear();",
+							"            arr.forEach(function (item) { u.add(item); });",
+							"        }",
+							"    }",
+							"",
+							"    function getField(key) {",
+							"        var arr = getUrlencodedArray();",
+							"        var found = arr.find(function (p) { return p.key === key; });",
+							"        return found ? String(found.value || '') : '';",
+							"    }",
+							"",
+							"    function setChecksum(value) {",
+							"        var arr = getUrlencodedArray();",
+							"        var idx = arr.findIndex(function (p) { return p.key === 'CHECKSUM'; });",
+							"        if (idx > -1) {",
+							"            arr[idx].value = value;",
+							"        } else {",
+							"            arr.push({ key: 'CHECKSUM', value: value });",
+							"        }",
+							"        setUrlencodedArray(arr);",
+							"    }",
+							"",
+							"    ensureCrypto(function () {",
+							"        var fields = [",
+							"            getField('PAYGATE_ID'),",
+							"            getField('REFERENCE'),",
+							"            getField('AMOUNT'),",
+							"            getField('CURRENCY'),",
+							"            getField('RETURN_URL'),",
+							"            getField('TRANSACTION_DATE'),",
+							"            getField('LOCALE'),",
+							"            getField('COUNTRY'),",
+							"            getField('EMAIL'),",
+							"            getField('PAY_METHOD'),",
+							"            getField('PAY_METHOD_DETAIL'),",
+							"            getField('NOTIFY_URL')",
+							"        ];",
+							"        var secret = 'secret'; // Replace with your actual secret if needed",
+							"        var concatString = fields.join('') + secret;",
+							"        // Log the string used for checksum calculation",
+							"        console.log('[PayWeb3 Checksum] String used for MD5:', concatString);",
+							"        var checksum = CryptoJS.MD5(concatString).toString(CryptoJS.enc.Hex);",
+							"        setChecksum(checksum);",
+							"    });",
+							"})();",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"id": "cbd51a0a-bdb6-4386-9d6b-b1f69322bbe7",
+						"exec": [
+							"// Robust x-www-form-urlencoded parser",
+							"function parseUrlEncoded(body) {",
+							"    if (!body || typeof body !== 'string') return {};",
+							"    return body.split('&').reduce(function (acc, pair) {",
+							"        if (!pair) return acc;",
+							"        var parts = pair.split('=');",
+							"        if (!parts[0]) return acc;",
+							"        var key = decodeURIComponent(parts[0]);",
+							"        var value = decodeURIComponent(parts[1] || '');",
+							"        acc[key] = value;",
+							"        return acc;",
+							"    }, {});",
+							"}",
+							"",
+							"var response = parseUrlEncoded(pm.response.text());",
+							"",
+							"// Validate presence of required keys",
+							"var requiredKeys = [\"PAYGATE_ID\", \"PAY_REQUEST_ID\", \"REFERENCE\", \"CHECKSUM\"];",
+							"requiredKeys.forEach(function(key) {",
+							"    pm.test(\"Response contains key: \" + key, function () {",
+							"        pm.expect(response).to.have.property(key);",
+							"    });",
+							"});",
+							"",
+							"// Build minimal HTML form with auto-submit",
+							"var htmlForm =",
+							"    '<!DOCTYPE html>' +",
+							"    '<html lang=\"en\">' +",
+							"    '<head><meta charset=\"UTF-8\"><title>Paygate Redirect</title></head>' +",
+							"    '<body>' +",
+							"    '<form id=\"payhostFrm\" action=\"https://secure.paygate.co.za/payweb3/process.trans\" method=\"post\">' +",
+							"    '<input type=\"hidden\" name=\"PAYGATE_ID\" value=\"' + response.PAYGATE_ID + '\" />' +",
+							"    '<input type=\"hidden\" name=\"PAY_REQUEST_ID\" value=\"' + response.PAY_REQUEST_ID + '\" />' +",
+							"    '<input type=\"hidden\" name=\"REFERENCE\" value=\"' + response.REFERENCE + '\" />' +",
+							"    '<input type=\"hidden\" name=\"CHECKSUM\" value=\"' + response.CHECKSUM + '\" />' +",
+							"    '</form>' +",
+							"    '<script>document.getElementById(\"payhostFrm\").submit();</script>' +",
+							"    '</body></html>';",
+							"",
+							"// Set environment variable",
+							"pm.environment.set(\"paygate_html_form\", htmlForm);",
+							"",
+							"// Test: Environment variable is set and contains all hidden fields",
+							"pm.test(\"paygate_html_form env var is set and contains all hidden fields\", function () {",
+							"    var html = pm.environment.get(\"paygate_html_form\");",
+							"    pm.expect(html).to.be.a(\"string\");",
+							"    requiredKeys.forEach(function(key) {",
+							"        pm.expect(html).to.include('name=\"' + key + '\"');",
+							"    });",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"id": "41467624-2698e62b-924f-41e1-b234-a038b2358200",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "PAYGATE_ID",
+							"value": "10011072130",
+							"type": "text",
+							"description": "Your PayGateID – assigned by PayGate"
+						},
+						{
+							"key": "REFERENCE",
+							"value": "testreference",
+							"type": "text",
+							"description": "This is your reference number for use by your internal systems"
+						},
+						{
+							"key": "AMOUNT",
+							"value": "100",
+							"type": "text",
+							"description": "Transaction amount in cents. e.g. 32.99 is specified as 3299"
+						},
+						{
+							"key": "CURRENCY",
+							"value": "ZAR",
+							"type": "text",
+							"description": "Currency code of the currency the customer is paying in."
+						},
+						{
+							"key": "RETURN_URL",
+							"value": "https://payfast.io/",
+							"type": "text",
+							"description": "Once the transaction is completed, PayWeb will return the customer to a page on your web site. The page the customer must see is specified in this field"
+						},
+						{
+							"key": "TRANSACTION_DATE",
+							"value": "2025-11-03 10:09:57",
+							"type": "text",
+							"description": "This is the date that the transaction was initiated on your website or system. The transactionCountry code of the country the customer is paying from date must be specified in 'Coordinated Universal Time' (UTC) e.g. 2016-05-30 09:30:10"
+						},
+						{
+							"key": "LOCALE",
+							"value": "en-za",
+							"type": "text",
+							"description": "The locale code identifies to PayGate the customer’s language, country and any special variant preferences (such as Date/Time format) which may be applied to the user interface. Not all the locales in the [locale table][#locales] are supported by PayGate. Please confirm with Support if the locale(s) you are using is supported. If the locale passed is not supported, then PayGate will default to the “en” locale."
+						},
+						{
+							"key": "COUNTRY",
+							"value": "ZAF",
+							"type": "text",
+							"description": "Country code of the country the customer is paying from"
+						},
+						{
+							"key": "EMAIL",
+							"value": "anything123@gmail.com",
+							"type": "text",
+							"description": "If the transaction is approved, PayWeb will email a payment confirmation to this email address – unless this is overridden at a gateway level by using the Payment Confirmation setting. This field remains compulsory but the sending of the confirmation email can be blocked"
+						},
+						{
+							"key": "PAY_METHOD",
+							"value": "CC",
+							"description": "Refer to PAY_METHOD in dev docs",
+							"type": "text",
+							"uuid": "dc342502-e747-4894-ac3c-a36132fdffb8"
+						},
+						{
+							"key": "PAY_METHOD_DETAIL",
+							"value": "Applepay",
+							"description": "The PAY_METHOD_DETAIL field should be left blank unless the merchant has more than one active payment method and wants to make sure that the client is presented with a specific payment method. Refer to the PAY_METHOD field above for more information",
+							"type": "text",
+							"uuid": "6d18688b-b1ed-417d-abeb-26c42a519c2d"
+						},
+						{
+							"key": "NOTIFY_URL",
+							"value": "https://webhook.site/0e15353f-4a27-4a40-9319-142f845ed74f",
+							"type": "text",
+							"uuid": "2a6d9e47-afed-4f59-912f-89f014f37135"
+						},
+						{
+							"key": "CHECKSUM",
+							"value": "",
+							"type": "text",
+							"description": "This field contains a calculated MD5 hash based on the values of ALL the above-mentioned fields and a key. Refer to the section on Security below for more detail regarding the MD5 hash."
+						}
+					]
+				},
+				"url": {
+					"raw": "https://secure.paygate.co.za/payweb3/initiate.trans",
+					"protocol": "https",
+					"host": [
+						"secure",
+						"paygate",
+						"co",
+						"za"
+					],
+					"path": [
+						"payweb3",
+						"initiate.trans"
+					]
+				},
+				"description": "Performs a PayWeb3 initiate by doing a standard HTTP POST with form data."
+			},
+			"response": [
+				{
+					"id": "41467624-e40a79ad-82db-4ba5-9914-16e652bbab5c",
+					"name": "PayWeb3 Initiate",
+					"originalRequest": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "PAYGATE_ID",
+									"value": "10011072130",
+									"description": "Your PayGateID – assigned by PayGate",
+									"type": "text"
+								},
+								{
+									"key": "REFERENCE",
+									"value": "pgtest_123456789",
+									"description": "This is your reference number for use by your internal systems",
+									"type": "text"
+								},
+								{
+									"key": "AMOUNT",
+									"value": "3299",
+									"description": "Transaction amount in cents. e.g. 32.99 is specified as 3299",
+									"type": "text"
+								},
+								{
+									"key": "CURRENCY",
+									"value": "ZAR",
+									"description": "Currency code of the currency the customer is paying in.",
+									"type": "text"
+								},
+								{
+									"key": "RETURN_URL",
+									"value": "https://my.return.url/page",
+									"description": "Once the transaction is completed, PayWeb will return the customer to a page on your web site. The page the customer must see is specified in this field",
+									"type": "text"
+								},
+								{
+									"key": "TRANSACTION_DATE",
+									"value": "2018-01-01 12:00:00",
+									"description": "This is the date that the transaction was initiated on your website or system. The transaction date must be specified in 'Coordinated Universal Time' (UTC) e.g. 2016-05-30 09:30:10",
+									"type": "text"
+								},
+								{
+									"key": "LOCALE",
+									"value": "en-za",
+									"description": "The locale code identifies to PayGate the customer’s language, country and any special variant preferences (such as Date/Time format) which may be applied to the user interface. Not all the locales in the [locale table][#locales] are supported by PayGate. Please confirm with Support if the locale(s) you are using is supported. If the locale passed is not supported, then PayGate will default to the “en” locale.",
+									"type": "text"
+								},
+								{
+									"key": "COUNTRY",
+									"value": "ZAF",
+									"description": "Country code of the country the customer is paying from",
+									"type": "text"
+								},
+								{
+									"key": "EMAIL",
+									"value": "customer@paygate.co.za",
+									"description": "If the transaction is approved, PayWeb will email a payment confirmation to this email address – unless this is overridden at a gateway level by using the Payment Confirmation setting. This field remains compulsory but the sending of the confirmation email can be blocked",
+									"type": "text"
+								},
+								{
+									"key": "CHECKSUM",
+									"value": "59229d9c6cb336ae4bd287c87e6f0220",
+									"description": "This field contains a calculated MD5 hash based on the values of ALL the above-mentioned fields and a key. Refer to the section on Security below for more detail regarding the MD5 hash.",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "https://secure.paygate.co.za/payweb3/initiate.trans",
+							"protocol": "https",
+							"host": [
+								"secure",
+								"paygate",
+								"co",
+								"za"
+							],
+							"path": [
+								"payweb3",
+								"initiate.trans"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "html",
+					"header": [
+						{
+							"key": "Cache-Control",
+							"value": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+							"name": "Cache-Control",
+							"description": "Tells all caching mechanisms from server to client whether they may cache this object. It is measured in seconds"
+						},
+						{
+							"key": "Connection",
+							"value": "keep-alive",
+							"name": "Connection",
+							"description": "Options that are desired for the connection"
+						},
+						{
+							"key": "Content-Length",
+							"value": "143",
+							"name": "Content-Length",
+							"description": "The length of the response body in octets (8-bit bytes)"
+						},
+						{
+							"key": "Content-Type",
+							"value": "text/html; charset=UTF-8",
+							"name": "Content-Type",
+							"description": "The mime type of this content"
+						},
+						{
+							"key": "Date",
+							"value": "Thu, 17 May 2018 07:05:45 GMT",
+							"name": "Date",
+							"description": "The date and time that the message was sent"
+						},
+						{
+							"key": "Expires",
+							"value": "Thu, 19 Nov 1981 08:52:00 GMT",
+							"name": "Expires",
+							"description": "Gives the date/time after which the response is considered stale"
+						},
+						{
+							"key": "Pragma",
+							"value": "no-cache",
+							"name": "Pragma",
+							"description": "Implementation-specific headers that may have various effects anywhere along the request-response chain."
+						},
+						{
+							"key": "Server",
+							"value": "Apache",
+							"name": "Server",
+							"description": "A name for the server"
+						},
+						{
+							"key": "Via",
+							"value": "1.1 8ffe7ba0631040e73d58310352f9a079.cloudfront.net (CloudFront)",
+							"name": "Via",
+							"description": "Informs the client of proxies through which the response was sent."
+						},
+						{
+							"key": "X-Amz-Cf-Id",
+							"value": "QKE7ZGJQc75z2ivIl8KXwGgziwJYzC8B-pACM42vQFson__zMPojmw==",
+							"name": "X-Amz-Cf-Id",
+							"description": "Custom header"
+						},
+						{
+							"key": "X-Cache",
+							"value": "Miss from cloudfront",
+							"name": "X-Cache",
+							"description": "Custom header"
+						}
+					],
+					"cookie": [
+						{
+							"expires": "Invalid Date",
+							"httpOnly": true,
+							"domain": "secure.paygate.co.za",
+							"path": "/",
+							"secure": true,
+							"value": "4ilii8i22im9n0fc6elhs7n9e6",
+							"key": "paygate_payweb3"
+						}
+					],
+					"responseTime": null,
+					"body": "PAYGATE_ID=10011072130&PAY_REQUEST_ID=D6379BB0-CB41-6535-B274-9CBD7F8DFA20&REFERENCE=pgtest_123456789&CHECKSUM=8f9587802e010f270956d18d0864eb10"
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Collection-level pre-request script for PayWeb3Scriptversion",
+					"// Enhancements: In addition to logging the MD5 input string and checksum, also log",
+					"// - the secret variable name used, and",
+					"// - a masked preview of the secret value (first and last character visible, rest as asterisks)",
+					"// The script only activates for relevant PayWeb3 initiate requests.",
+					"",
+					"(function () {",
+					"    // Guard: Only run for PayWeb3 initiate calls",
+					"    try {",
+					"        var url = pm.request && pm.request.url && pm.request.url.toString();",
+					"        var isInitiate = url && url.indexOf(\"/payweb3/initiate.trans\") > -1;",
+					"        var isForm = pm.request && pm.request.body && pm.request.body.mode === 'urlencoded';",
+					"        if (!isInitiate || !isForm) { return; }",
+					"    } catch (e) { return; }",
+					"",
+					"    function ensureCrypto(cb) {",
+					"        if (typeof CryptoJS !== 'undefined') return cb();",
+					"        pm.sendRequest('https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js', function (err, res) {",
+					"            if (!err && res && res.code === 200) {",
+					"                eval(res.text());",
+					"            }",
+					"            cb();",
+					"        });",
+					"    }",
+					"",
+					"    // Helpers to work with urlencoded body regardless of PropertyList/array",
+					"    function getUrlencodedArray() {",
+					"        var u = pm.request.body && pm.request.body.urlencoded;",
+					"        if (!u) return [];",
+					"        if (Array.isArray(u)) return u;",
+					"        if (typeof u.toJSON === 'function') return u.toJSON();",
+					"        if (typeof u.all === 'function') return u.all();",
+					"        return [];",
+					"    }",
+					"",
+					"    function setUrlencodedArray(arr) {",
+					"        var u = pm.request.body && pm.request.body.urlencoded;",
+					"        if (!u) return;",
+					"        if (Array.isArray(u)) { pm.request.body.urlencoded = arr; }",
+					"        else if (typeof u.clear === 'function' && typeof u.add === 'function') { u.clear(); arr.forEach(function (i) { u.add(i); }); }",
+					"    }",
+					"",
+					"    function getField(key) {",
+					"        var arr = getUrlencodedArray();",
+					"        var f = arr.find(function (p) { return p.key === key; });",
+					"        return f ? String(f.value || '') : '';",
+					"    }",
+					"",
+					"    function setField(key, value) {",
+					"        var arr = getUrlencodedArray();",
+					"        var idx = arr.findIndex(function (p) { return p.key === key; });",
+					"        if (idx > -1) arr[idx].value = value; else arr.push({ key: key, value: value });",
+					"        setUrlencodedArray(arr);",
+					"    }",
+					"",
+					"    // Secret discovery order: vault, environment, collection, globals",
+					"    function getSecretCandidate(names) {",
+					"        for (var i = 0; i < names.length; i++) {",
+					"            var n = names[i];",
+					"            // vault first",
+					"            var v = pm.vault && typeof pm.vault.get === 'function' ? pm.vault.get(n) : undefined;",
+					"            if (v) return { name: n, value: v, source: 'vault' };",
+					"            // environment",
+					"            var e = pm.environment.get(n);",
+					"            if (e) return { name: n, value: e, source: 'environment' };",
+					"            // collection",
+					"            var c = pm.collectionVariables.get(n);",
+					"            if (c) return { name: n, value: c, source: 'collection' };",
+					"            // globals",
+					"            var g = pm.globals.get(n);",
+					"            if (g) return { name: n, value: g, source: 'globals' };",
+					"        }",
+					"        return { name: names[0] || 'SECRET', value: '', source: 'not-found' };",
+					"    }",
+					"",
+					"    function maskSecret(str) {",
+					"        if (!str) return '';",
+					"        var s = String(str);",
+					"        if (s.length <= 2) return s[0] + (s.length === 2 ? '*' : '');",
+					"        return s[0] + Array(s.length - 1).join('*') + s[s.length - 1];",
+					"    }",
+					"",
+					"    ensureCrypto(function () {",
+					"        // Build input in PayWeb3 order (no separators) and append secret",
+					"        var fieldsOrder = [",
+					"            'PAYGATE_ID',",
+					"            'REFERENCE',",
+					"            'AMOUNT',",
+					"            'CURRENCY',",
+					"            'RETURN_URL',",
+					"            'TRANSACTION_DATE',",
+					"            'LOCALE',",
+					"            'COUNTRY',",
+					"            'EMAIL',",
+					"            'NOTIFY_URL'",
+					"        ];",
+					"",
+					"        var base = fieldsOrder.map(function (k) { return getField(k); }).join('');",
+					"",
+					"        // Common secret variable name candidates used for PayWeb3",
+					"        var secretCandidates = ['passphrase', 'merchant_key', 'PAYGATE_SECRET', 'secret'];",
+					"        var secretMeta = getSecretCandidate(secretCandidates);",
+					"        var secret = secretMeta.value || '';",
+					"",
+					"        var input = base + secret;",
+					"        var checksum = (typeof CryptoJS !== 'undefined') ? CryptoJS.MD5(input).toString() : '';",
+					"",
+					"        // Set checksum back to request body if present",
+					"        setField('CHECKSUM', checksum);",
+					"",
+					"        // Logging: input string, checksum, and masked secret details",
+					"        var maskedValue = maskSecret(secret);",
+					"        var maskedName = maskSecret(secretMeta.name || '');",
+					"",
+					"        console.log('[PayWeb3] MD5 input:', input);",
+					"        console.log('[PayWeb3] MD5 checksum:', checksum);",
+					"        console.log('[PayWeb3] Secret var:', maskedName, '| source:', secretMeta.source, '| value:', maskedValue);",
+					"    });",
+					"})();"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"id": "00e383dd-0b48-49fa-be45-ab4073bc71e7",
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "payGateId",
+			"value": "10011072130"
+		},
+		{
+			"key": "reference",
+			"value": "pgtest_"
+		},
+		{
+			"key": "amount",
+			"value": "3299"
+		},
+		{
+			"key": "currency",
+			"value": "ZAR"
+		},
+		{
+			"key": "returnUrl",
+			"value": "https://my.return.url/page"
+		},
+		{
+			"key": "transactionDate",
+			"value": "2020-01-01 12:00:00"
+		},
+		{
+			"key": "locale",
+			"value": "en-za"
+		},
+		{
+			"key": "country",
+			"value": "ZAF"
+		},
+		{
+			"key": "email",
+			"value": "customer@paygate.co.za"
+		},
+		{
+			"key": "encryptionKey",
+			"value": "secret"
+		},
+		{
+			"key": "checksum",
+			"value": "12ef5d8bf7434fb291dde99340677576"
+		}
+	]
+}
